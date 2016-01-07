@@ -18,12 +18,13 @@ void JniManager::setMono(MonoDomain* domain, MonoImage* monoImage)
 	setFullTrustField = mono_class_get_method_from_name(processRequestClass, "set_FullTrust", 1);
 	setIsSingletonField = mono_class_get_method_from_name(processRequestClass, "set_IsSingleton", 1);
 	setLogField = mono_class_get_method_from_name(processRequestClass, "set_Log", 1);
-	setMethodArgumentsField = mono_class_get_method_from_name(processRequestClass, "set_MethodArguments", 1);
+	getResult = mono_class_get_method_from_name(processRequestClass, "get_Result", 0);
 	setNotifyEventsField = mono_class_get_method_from_name(processRequestClass, "set_NotifyEvents", 1);
-	setInboundPropertiesField = mono_class_get_method_from_name(processRequestClass, "set_InboundProperties", 1);
-	setInvocationPropertiesField = mono_class_get_method_from_name(processRequestClass, "set_InvocationProperties", 1);
-	setSessionPropertiesField = mono_class_get_method_from_name(processRequestClass, "set_SessionProperties", 1);
-	setOutboundPropertiesField = mono_class_get_method_from_name(processRequestClass, "set_OutboundProperties", 1);
+	addMethodArgumentsProperty = mono_class_get_method_from_name(processRequestClass, "AddMethodArgumentProperty", 2);
+	addInboundProperty = mono_class_get_method_from_name(processRequestClass, "AddInboundProperty", 2);
+	addInvocationProperty = mono_class_get_method_from_name(processRequestClass, "AddInvocationProperty", 2);
+	addSessionProperty = mono_class_get_method_from_name(processRequestClass, "AddSessionProperty", 2);
+	addOutboundProperty = mono_class_get_method_from_name(processRequestClass, "AddOutboundProperty", 2);
 }
 
 void JniManager::init()
@@ -143,10 +144,6 @@ void JniManager::init()
 	getOutboundProperties = env->GetMethodID(processRequestClazz, "getOutboundProperties", "()Ljava/util/Map;");
 
 	checkJniException();
-
-	getResult = env->GetMethodID(processRequestClazz, "getResult", "()Ljava/lang/Object;");
-
-	checkJniException();
 }
 
 void JniManager::setRouter(jobject obj)
@@ -253,15 +250,6 @@ void JniManager::throwException(const char* message)
 	env->ThrowNew(exceptionClazz, message);
 }
 
-jobject JniManager::getObject(jobject obj)
-{
-	JNIEnv* env = getEnv();
-
-	assert(env);
-
-	return env->CallObjectMethod(obj, getResult);
-}
-
 MonoObject* JniManager::toProcessRequest(jobject obj)
 {
 	JNIEnv* env = getEnv();
@@ -307,6 +295,8 @@ MonoObject* JniManager::toProcessRequest(jobject obj)
 		throwException(message);
 	}
 
+	jobject javaMethodArguments = env->CallObjectMethod(obj, getMethodArguments);
+	setProperties(env, javaMethodArguments, addMethodArgumentsProperty, processRequest);
 	//request->MethodArguments = typeConverter->convertToC<Dictionary<String^, Object^>^>(env, env->CallObjectMethod(obj, getMethodArguments));
 	//request->InboundProperties = typeConverter->convertToC<Dictionary<String^, Object^>^>(env, env->CallObjectMethod(obj, getInboundProperties));
 	//request->InvocationProperties = typeConverter->convertToC<Dictionary<String^, Object^>^>(env, env->CallObjectMethod(obj, getInvocationProperties));
@@ -315,3 +305,230 @@ MonoObject* JniManager::toProcessRequest(jobject obj)
 	
 	return processRequest;
 }
+
+void JniManager::setProperties(JNIEnv* env, jobject map, MonoMethod* method, MonoObject* instance)
+{
+	assert(env);
+
+	if (map == NULL)
+	{
+		return;
+	}
+
+	int mapSize = env->CallIntMethod(map, typeConverter->size);
+
+	jobject keys = env->CallObjectMethod(map, typeConverter->keySet);
+
+	jobjectArray arrayOfKeys = (jobjectArray)env->CallObjectMethod(keys, typeConverter->toArray);
+
+	for (int i = 0; i < mapSize; i++)
+	{
+		jstring javaKeyName = (jstring)env->GetObjectArrayElement(arrayOfKeys, i);
+		const char* keyName = typeConverter->convertToC<const char*>(env, javaKeyName);
+		jobject mapValue = env->CallObjectMethod(map, typeConverter->getMapValue, javaKeyName);
+
+		//if (env->IsInstanceOf(mapValue, typeConverter->mapClazz))
+		//{
+			
+		//}
+
+		MonoObject* exc = NULL;
+		void* args[2];
+		args[0] = mono_string_new(monoDomain, keyName);
+		args[1] = toMonoObject(env, mapValue);
+
+		mono_runtime_invoke(method, instance, args, &exc);
+
+		if (exc)
+		{
+			const char* message = mono_string_to_utf8(mono_object_to_string(exc, nullptr));
+			throwException(message);
+			return;
+		}
+
+		env->DeleteLocalRef(javaKeyName);
+		env->DeleteLocalRef(mapValue);
+	}
+
+	env->DeleteLocalRef(keys);
+	env->DeleteLocalRef(arrayOfKeys);
+	env->DeleteLocalRef(map);
+}
+
+jobject JniManager::toResponse(MonoObject* monoObject)
+{
+	assert(monoObject);
+
+	JNIEnv* env = getEnv();
+
+	assert(env);
+
+	jobject response = env->NewObject(responseClazz, responseCtor);
+	
+	MonoObject* exc = NULL;
+
+	MonoObject* result = mono_runtime_invoke(getResult, monoObject, NULL, &exc);
+
+	if (exc)
+	{
+		const char* message = mono_string_to_utf8(mono_object_to_string(exc, nullptr));
+		throwException(message);
+		return nullptr;
+	}
+
+	jobject jPayload;
+
+	if (result != nullptr)
+	{
+		MonoClass* resultClass = mono_object_get_class(result);
+
+		MonoType* monoType = mono_class_get_type(resultClass);
+
+		char* typeName = mono_type_get_name(monoType);
+
+		// If it's a string or byte[]
+		//if (typeName == "System.String")
+		//{
+		const char* convertedPayload = mono_string_to_utf8(mono_object_to_string(result, nullptr));
+		jPayload = env->NewStringUTF(convertedPayload);
+		/*}
+		else
+		{
+			jPayload = typeConverter->convertToJavaArray<jbyteArray>(env, payload);
+		}*/
+
+		env->CallVoidMethod(response, setPayloadMethod, jPayload);
+		env->DeleteLocalRef(jPayload);
+	}
+
+	// set Mule Message properties
+	//jobject jInvocationProperties = typeConverter->convertToJavaMap(env, request->InvocationProperties);
+	//jobject jSessionProperties = typeConverter->convertToJavaMap(env, request->SessionProperties);
+	//jobject jOutboundProperties = typeConverter->convertToJavaMap(env, request->OutboundProperties);
+
+	/*env->CallVoidMethod(response, setInvocationProperties, jInvocationProperties);
+	env->CallVoidMethod(response, setOutboundProperties, jOutboundProperties);
+	env->CallVoidMethod(response, setSessionProperties, jSessionProperties);
+
+	env->DeleteLocalRef(jInvocationProperties);
+	env->DeleteLocalRef(jOutboundProperties);
+	env->DeleteLocalRef(jSessionProperties);*/
+
+	return response;
+}
+
+MonoObject* JniManager::toMonoObject(JNIEnv* env, jobject obj)
+{
+	assert(env);
+
+	MonoObject* result = NULL;
+
+	jclass clazz = env->GetObjectClass(obj);
+	jstring clazzName = (jstring)env->CallObjectMethod(clazz, typeConverter->getClassName);
+
+	string className = typeConverter->convertToC<string>(env, clazzName);
+
+
+	if (className == "java.lang.Integer")
+	{
+		int value = typeConverter->convertToC<int>(env, obj);
+		result = mono_value_box(monoDomain, mono_get_int32_class(), &value);
+		env->DeleteLocalRef(obj);
+	}
+
+	/*if (className->Equals("java.lang.Boolean", StringComparison::InvariantCultureIgnoreCase))
+	{
+		result = convertToC<bool>(env, obj);
+		env->DeleteLocalRef(obj);
+	}
+
+	if (className->Equals("java.lang.Character", StringComparison::InvariantCultureIgnoreCase))
+	{
+		result = convertToC<char>(env, obj);
+		env->DeleteLocalRef(obj);
+	}
+
+	if (className->Equals("java.lang.Long", StringComparison::InvariantCultureIgnoreCase))
+	{
+		result = convertToC<long>(env, obj);
+		env->DeleteLocalRef(obj);
+	}
+
+	if (className->Equals("java.lang.Short", StringComparison::InvariantCultureIgnoreCase))
+	{
+		result = convertToC<short>(env, obj);
+		env->DeleteLocalRef(obj);
+	}
+
+	if (className->Equals("java.lang.Byte", StringComparison::InvariantCultureIgnoreCase))
+	{
+		result = convertToC<byte>(env, obj);
+		env->DeleteLocalRef(obj);
+	}
+
+	if (className->Equals("java.lang.String", StringComparison::InvariantCultureIgnoreCase))
+	{
+		result = convertToC<String^>(env, obj);
+		env->DeleteLocalRef(obj);
+	}
+
+	if (className->Equals("java.lang.Double", StringComparison::InvariantCultureIgnoreCase))
+	{
+		result = convertToC<double>(env, obj);
+		env->DeleteLocalRef(obj);
+	}*/
+
+	return result;
+}
+
+//template<typename T>
+//MonoObject* toMonoObject(T type)
+//{
+//	string name = string(typeid(type).name());
+//	MonoClass* clazz = NULL;
+//
+//	if (name == "unsigned char"){
+//		clazz = mono_get_byte_class();
+//	}
+//
+//	if (name == "float"){
+//		clazz = mono_get_single_class();
+//	}
+//
+//	if (name == "short"){
+//		clazz = mono_get_int16_class();
+//	}
+//
+//	if (name == "sbyte"){
+//		clazz = mono_get_sbyte_class();
+//	}
+//
+//	if (name == "char"){
+//		clazz = mono_get_char_class();
+//	}
+//
+//	if (name == "int"){
+//		clazz = mono_get_int32_class();
+//	}
+//
+//	if (name == "__int64"){
+//		clazz = mono_get_int64_class();
+//	}
+//
+//	if (name == "double"){
+//		clazz = mono_get_double_class();
+//	}
+//
+//	if (name == "bool"){
+//		clazz = mono_get_boolean_class();
+//	}
+//
+//	if (clazz)
+//	{
+//		return mono_value_box(monoDomain, clazz, &type);
+//	}
+//	else
+//	{
+//		return NULL;
+//	}
+//}

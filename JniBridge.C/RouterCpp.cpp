@@ -36,7 +36,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 		monoDomain = mono_jit_init_version("jni Root Domain", "v4.0.30319");
 
 		// open our Example.dll assembly
-		MonoAssembly* assembly = mono_domain_assembly_open(monoDomain, "D:/MyStuff/Embedded mono/JniBridge/Debug/Org.Mule.Api.Routing.dll");
+		MonoAssembly* assembly = mono_domain_assembly_open(monoDomain, "D:/MyStuff/Embedded mono/MonoJniBridge/Debug/Org.Mule.Api.Routing.dll");
 		MonoImage* monoImage = mono_assembly_get_image(assembly);
 
 		// find the Entity class in the image
@@ -85,7 +85,7 @@ JNIEXPORT jobject JNICALL Java_org_mule_api_jni_Bridge_invokeNetMethod
 	void* args[1];
 	args[0] = processRequest;
 
-	mono_runtime_invoke(processMethod, routerInstance, args, &exception);
+	MonoObject* response = mono_runtime_invoke(processMethod, routerInstance, args, &exception);
 
 	// check for any thrown exception
 	if (exception)
@@ -95,14 +95,8 @@ JNIEXPORT jobject JNICALL Java_org_mule_api_jni_Bridge_invokeNetMethod
 		return nullptr;
 	}
 
-	jobject result = jniManager->getObject(request);
-
-	TypeConverter* converter = new TypeConverter();
-	converter->init(env);
-
-	std::vector<byte> cString = converter->convertToC<std::vector<byte>>(env, result);
-
-	const char* x = cString.size() + "";
 	
-	return env->NewStringUTF(x);
+	jobject result = jniManager->toResponse(response);
+
+	return result;
 }

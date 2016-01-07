@@ -1150,3 +1150,55 @@ jobject TypeConverter::toJavaObject(JNIEnv* env, Object^ systemObject)
 	throw gcnew Exception("Unsupported type");
 }
 */
+
+template<typename T>
+MonoObject* TypeConverter::toMonoObject(T type)
+{
+	string name = string(typeid(type).name());
+	MonoClass* clazz = NULL;
+
+	if (name == "unsigned char"){
+		clazz = mono_get_byte_class();
+	}
+
+	if (name == "float"){
+		clazz = mono_get_single_class();
+	}
+
+	if (name == "short"){
+		clazz = mono_get_int16_class();
+	}
+
+	if (name == "sbyte"){
+		clazz = mono_get_sbyte_class();
+	}
+
+	if (name == "char"){
+		clazz = mono_get_char_class();
+	}
+
+	if (name == "int"){
+		clazz = mono_get_int32_class();
+	}
+
+	if (name == "__int64"){
+		clazz = mono_get_int64_class();
+	}
+
+	if (name == "double"){
+		clazz = mono_get_double_class();
+	}
+
+	if (name == "bool"){
+		clazz = mono_get_boolean_class();
+	}
+
+	if (clazz)
+	{
+		return mono_value_box(monoDomain, clazz, &type);
+	}
+	else
+	{
+		return NULL;
+	}
+}

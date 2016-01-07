@@ -1,3 +1,9 @@
+#include <mono/metadata/mono-config.h>
+#include <mono/metadata/threads.h>
+#include <mono/metadata/assembly.h>
+#include <mono/metadata/mono-gc.h>
+#include <mono/metadata/environment.h>
+#include <mono/jit/jit.h>
 #include <jni.h>
 #include <cassert>
 #include <vector>
@@ -25,14 +31,7 @@ private:
 	jmethodID longCtor;
 	jmethodID booleanValue;
 	jmethodID booleanCtor;
-	jmethodID getClassName;
-	jmethodID size;
-	jmethodID keySet;
-	jmethodID getMapValue;
 	jmethodID mapCtor;
-	jmethodID putMapValue;
-	jmethodID toArray;
-	jclass mapClazz;
 	jclass hashMapClazz;
 	jclass setClazz;
 	jclass intClazz;
@@ -45,6 +44,14 @@ private:
 	jclass floatClazz;
 
 public:
+	jmethodID getClassName;
+	jmethodID getMapValue;
+	jclass mapClazz;
+	jmethodID keySet;
+	jmethodID putMapValue;
+	jmethodID toArray;
+
+	jmethodID size;
 	void init(JNIEnv*);
 	// conversion functions
 	template<typename TOut>
@@ -52,6 +59,8 @@ public:
 	void cleanup(JNIEnv*);
 	template<typename TOut, typename TIn>
 	TOut convertToJavaArray(JNIEnv*, TIn);
+	template<typename T>
+	MonoObject* toMonoObject(T);
 	//jobject toJavaObject(JNIEnv*, Object^);
 	//jobject convertToJavaMap(JNIEnv*, Object^);
 };

@@ -1,11 +1,5 @@
 #include <jni.h>
 #include <map>
-#include <mono/metadata/mono-config.h>
-#include <mono/metadata/threads.h>
-#include <mono/metadata/assembly.h>
-#include <mono/metadata/mono-gc.h>
-#include <mono/metadata/environment.h>
-#include <mono/jit/jit.h>
 #include "TypeConverter.h"
 
 using namespace std;
@@ -39,11 +33,8 @@ private:
 	jobject routerInstance;
 	jclass exceptionClazz;
 
-	jmethodID getResult;
-
+	// Mono Methods
 	MonoMethod* processMethod;
-
-	// Fields
 	MonoMethod* setAssemblyPathField;
 	MonoMethod* setMethodNameField;
 	MonoMethod* setAssemblyNameField;
@@ -51,14 +42,14 @@ private:
 	MonoMethod* setIsSingletonField;
 	MonoMethod* setLogField;
 	MonoMethod* setNotifyEventsField;
-	MonoMethod* setMethodArgumentsField;
-	MonoMethod* setInboundPropertiesField;
-	MonoMethod* setInvocationPropertiesField;
-	MonoMethod* setOutboundPropertiesField;
-	MonoMethod* setSessionPropertiesField;
+	MonoMethod* addMethodArgumentsProperty;
+	MonoMethod* addOutboundProperty;
+	MonoMethod* addInboundProperty;
+	MonoMethod* addInvocationProperty;
+	MonoMethod* addSessionProperty;
+	MonoMethod* getResult;
 
 	MonoClass* processRequestClass;
-	
 
 public:
 
@@ -71,6 +62,8 @@ public:
 	void setRouter(jobject);
 	void checkJniException();
 	MonoObject* toProcessRequest(jobject);
-	jobject getObject(jobject);
 	void throwException(const char*);
+	void setProperties(JNIEnv*, jobject, MonoMethod*, MonoObject*);
+	MonoObject* toMonoObject(JNIEnv*, jobject);
+	jobject toResponse(MonoObject*);
 };
